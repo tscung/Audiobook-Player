@@ -8,6 +8,7 @@
 
 import UIKit
 import AVFoundation
+import MediaPlayer
 import Fabric
 import Crashlytics
 
@@ -35,6 +36,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UISplitViewControllerDele
         } catch {
             // @TODO: Handle failing AVAudioSession
         }
+
+        // register to audio-interruption notifications
+        NotificationCenter.default.addObserver(self, selector: #selector(self.handleAudioInterruptions(_:)), name: NSNotification.Name.AVAudioSessionInterruption, object: nil)
+
+        // register to audio-route-change notifications
+        NotificationCenter.default.addObserver(self, selector: #selector(self.handleAudioRouteChange(_:)), name: NSNotification.Name.AVAudioSessionRouteChange, object: nil)
+
+        // register for remote events
+        self.registerRemoteEvents()
 
         return true
     }
@@ -98,5 +108,88 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UISplitViewControllerDele
 
     func applicationWillTerminate(_ application: UIApplication) {
         // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
+    }
+}
+
+extension AppDelegate {
+    // Playback may be interrupted by calls. Handle pause
+    @objc func handleAudioInterruptions(_ notification: Notification) {
+        if PlayerManager.sharedInstance.isPlaying {
+            PlayerManager.sharedInstance.play()
+        }
+    }
+
+    // Handle audio route changes
+    @objc func handleAudioRouteChange(_ notification: Notification) {
+        guard PlayerManager.sharedInstance.isPlaying,
+            let userInfo = notification.userInfo,
+            let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+            let reason = AVAudioSessionRouteChangeReason(rawValue: reasonValue) else {
+                return
+        }
+
+        // Pause playback if route changes due to a disconnect
+        switch reason {
+        case .oldDeviceUnavailable:
+            PlayerManager.sharedInstance.play()
+        default:
+            break
+        }
+    }
+
+    /**
+     * For now, seek forward/backward and next/previous track perform the same function
+     */
+    func registerRemoteEvents() {
+        let togglePlayPauseHandler: (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus = { (_) -> MPRemoteCommandHandlerStatus in
+            PlayerManager.sharedInstance.playPause()
+            return .success
+        }
+
+        MPRemoteCommandCenter.shared().togglePlayPauseCommand.isEnabled = true
+        MPRemoteCommandCenter.shared().togglePlayPauseCommand.addTarget(handler: togglePlayPauseHandler)
+
+        MPRemoteCommandCenter.shared().playCommand.isEnabled = true
+        MPRemoteCommandCenter.shared().playCommand.addTarget(handler: togglePlayPauseHandler)
+
+        MPRemoteCommandCenter.shared().pauseCommand.isEnabled = true
+        MPRemoteCommandCenter.shared().pauseCommand.addTarget(handler: togglePlayPauseHandler)
+
+        let skipForwardHandler: (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus = { (commandEvent) -> MPRemoteCommandHandlerStatus in
+            PlayerManager.sharedInstance.forward()
+            return .success
+        }
+
+        MPRemoteCommandCenter.shared().skipForwardCommand.preferredIntervals = [30]
+        MPRemoteCommandCenter.shared().skipForwardCommand.addTarget(handler: skipForwardHandler)
+
+        MPRemoteCommandCenter.shared().skipBackwardCommand.preferredIntervals = [30]
+        MPRemoteCommandCenter.shared().nextTrackCommand.addTarget(handler: skipForwardHandler)
+
+        MPRemoteCommandCenter.shared().seekForwardCommand.addTarget { (commandEvent) -> MPRemoteCommandHandlerStatus in
+            guard let cmd = commandEvent as? MPSeekCommandEvent,
+                cmd.type == .endSeeking else { return .success }
+
+            //end seeking
+            PlayerManager.sharedInstance.forward()
+            return .success
+        }
+
+        let skipBackwardHandler: (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus = { (commandEvent) -> MPRemoteCommandHandlerStatus in
+            PlayerManager.sharedInstance.rewind()
+            return .success
+        }
+
+        MPRemoteCommandCenter.shared().skipBackwardCommand.addTarget(handler: skipBackwardHandler)
+        MPRemoteCommandCenter.shared().previousTrackCommand.addTarget(handler: skipBackwardHandler)
+
+        MPRemoteCommandCenter.shared().seekBackwardCommand.addTarget { (commandEvent) -> MPRemoteCommandHandlerStatus in
+            guard let cmd = commandEvent as? MPSeekCommandEvent,
+                cmd.type == .endSeeking else { return .success }
+
+            //end seeking
+            PlayerManager.sharedInstance.rewind()
+            return .success
+        }
     }
 }
