@@ -18,28 +18,18 @@ class PlayerManager: NSObject {
     var fileURL: URL!
     var identifier: String!
 
-    var currentBooks: [Book]!
-    var currentBook: Book! {
-        return self.currentBooks.first
-    }
-
+    var currentBook: Book!
     private var timer: Timer!
 
-    func load(_ books: [Book], completion:@escaping (AVAudioPlayer?) -> Void) {
-        if let player = self.audioPlayer,
-            let currentBooks = self.currentBooks,
-            currentBooks.count == books.count { // @TODO : fix logic
-                player.stop()
-                // notify?
+    func load(_ book: Book, completion:@escaping (AVAudioPlayer?) -> Void) {
+        if let player = self.audioPlayer {
+            player.stop()
         }
-
-        self.currentBooks = books
-
-        let book = books.first!
 
         self.playerItem = AVPlayerItem(asset: book.asset)
         self.fileURL = book.fileURL
         self.identifier = book.identifier
+        self.currentBook = book
 
         // load data on background thread
         DispatchQueue.global().async {
@@ -117,7 +107,7 @@ class PlayerManager: NSObject {
 
         let userInfo = [
             "time": currentTime,
-            "fileURL": self.currentBooks.first!.fileURL
+            "fileURL": self.currentBook.fileURL
             ] as [String: Any]
 
         // notify
@@ -253,7 +243,7 @@ class PlayerManager: NSObject {
 
     // toggle play/pause of book
     // @TODO: Replace with distinct play() and pause() methods
-    func playPause(autoplayed: Bool = false) {
+    func playPause() {
         guard let audioplayer = self.audioPlayer else {
             return
         }
@@ -274,10 +264,6 @@ class PlayerManager: NSObject {
         }
 
         let completed = Int(audioplayer.duration) == Int(audioplayer.currentTime)
-
-        if autoplayed && completed {
-            return
-        }
 
         // if book is completed, reset to start
         if completed {
@@ -317,18 +303,5 @@ extension PlayerManager: AVAudioPlayerDelegate {
         player.currentTime = player.duration
 
         self.update()
-
-        guard UserDefaults.standard.bool(forKey: UserDefaultsConstants.autoplayEnabled),
-            self.currentBooks.count > 1 else {
-            return
-        }
-
-        let currentBooks = Array(PlayerManager.sharedInstance.currentBooks.dropFirst())
-
-        load(currentBooks, completion: { (_) in
-            let userInfo = ["books": currentBooks]
-
-            NotificationCenter.default.post(name: Notification.Name.AudiobookPlayer.bookChange, object: nil, userInfo: userInfo)
-        })
     }
 }
