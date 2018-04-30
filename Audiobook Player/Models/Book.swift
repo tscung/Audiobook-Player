@@ -9,7 +9,14 @@
 import UIKit
 import AVFoundation
 
-class Book: NSObject {
+protocol LibraryObject {
+    var title: String { get set }
+    var author: String { get set }
+    var artwork: UIImage { get set }
+    var percentCompletedRoundedString: String { get }
+}
+
+class Book: NSObject, LibraryObject {
     // MARK: Meta data
 
     var artwork: UIImage
