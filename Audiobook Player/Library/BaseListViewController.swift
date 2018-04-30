@@ -1,0 +1,316 @@
+//
+//  BaseListViewController.swift
+//  Audiobook Player
+//
+//  Created by Gianni Carlo on 4/30/18.
+//  Copyright © 2018 Tortuga Power. All rights reserved.
+//
+
+import UIKit
+import SwiftReorder
+
+class BaseListViewController: UIViewController {
+    // TableView's datasource
+    var bookArray = [LibraryObject]()
+
+    let tableView = UITableView()
+    let footerView = UIView()
+    var footerHeightConstraint: NSLayoutConstraint!
+
+    let constraintOffset: CGFloat = 16
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        let margins = self.view.layoutMarginsGuide
+
+        //should enforce in some way that the footer should be initialized first
+        self.addFooter(margins)
+        self.addTable(margins)
+
+        self.setupTable()
+
+        // register for percentage change notifications
+        NotificationCenter.default.addObserver(self, selector: #selector(self.updatePercentage(_:)), name: Notification.Name.AudiobookPlayer.updatePercentage, object: nil)
+
+        // register notifications when the book is played
+        NotificationCenter.default.addObserver(self, selector: #selector(self.bookPlayed), name: Notification.Name.AudiobookPlayer.bookPlayed, object: nil)
+
+        // register notifications when the book is paused
+        NotificationCenter.default.addObserver(self, selector: #selector(self.bookPaused), name: Notification.Name.AudiobookPlayer.bookPaused, object: nil)
+
+        // register for book end notifications
+        NotificationCenter.default.addObserver(self, selector: #selector(self.bookEnd(_:)), name: Notification.Name.AudiobookPlayer.bookEnd, object: nil)
+    }
+
+    func addFooter(_ margins: UILayoutGuide) {
+        self.footerView.translatesAutoresizingMaskIntoConstraints = false
+        self.view.addSubview(self.footerView)
+        self.footerHeightConstraint = self.footerView.heightAnchor.constraint(equalToConstant: 55)
+        self.footerHeightConstraint.isActive = true
+
+        self.footerView.leadingAnchor.constraint(equalTo: margins.leadingAnchor, constant: -constraintOffset).isActive = true
+        self.footerView.trailingAnchor.constraint(equalTo: margins.trailingAnchor, constant: constraintOffset).isActive = true
+        self.footerView.bottomAnchor.constraint(equalTo: margins.bottomAnchor).isActive = true
+    }
+
+    func addTable(_ margins: UILayoutGuide) {
+        self.tableView.translatesAutoresizingMaskIntoConstraints = false
+        self.view.addSubview(self.tableView)
+        self.tableView.topAnchor.constraint(equalTo: margins.topAnchor).isActive = true
+        self.tableView.leadingAnchor.constraint(equalTo: margins.leadingAnchor, constant: -constraintOffset).isActive = true
+        self.tableView.trailingAnchor.constraint(equalTo: margins.trailingAnchor, constant: constraintOffset).isActive = true
+        self.tableView.bottomAnchor.constraint(equalTo: self.footerView.topAnchor).isActive = true
+    }
+
+    func setupTable() {
+        self.tableView.register(UINib(nibName: "BookCellView", bundle: nil), forCellReuseIdentifier: "BookCellView")
+        self.tableView.register(UINib(nibName: "AddCellView", bundle: nil), forCellReuseIdentifier: "AddCellView")
+
+        self.tableView.dataSource = self
+        self.tableView.delegate = self
+        self.tableView.reorder.delegate = self
+        self.tableView.reorder.cellScale = 1.05
+        self.tableView.tableFooterView = UIView()
+
+        // fixed tableview having strange offset
+        self.edgesForExtendedLayout = UIRectEdge()
+    }
+}
+
+extension BaseListViewController {
+    // Percentage callback
+    @objc func updatePercentage(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+            let fileURL = userInfo["fileURL"] as? URL,
+            let percentCompletedString = userInfo["percentCompletedString"] as? String else {
+                return
+        }
+
+        guard let index = (self.bookArray.index { (book) -> Bool in
+            return (book as? Book)!.fileURL == fileURL
+        }), let cell = self.tableView.cellForRow(at: IndexPath(row: index, section: 0)) as? BookCellView else {
+            return
+        }
+
+        cell.completionLabel.text = percentCompletedString
+    }
+
+    @objc func bookPlayed() {
+        //        self.footerPlayButton.setImage(self.miniPauseButton, for: UIControlState())
+    }
+
+    @objc func bookPaused() {
+        //        self.footerPlayButton.setImage(self.miniPlayImage, for: UIControlState())
+    }
+
+    @objc func bookEnd(_ notification: Notification) {
+        //        self.footerPlayButton.setImage(self.miniPlayImage, for: UIControlState())
+    }
+
+    func setupFooter(book: Book) {
+        //setup relevant information
+    }
+}
+
+extension BaseListViewController: UITableViewDataSource {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        guard section == 0 else {
+            return 1
+        }
+        return self.bookArray.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        if let spacer = tableView.reorder.spacerCell(for: indexPath) {
+            return spacer
+        }
+
+        guard indexPath.section == 0,
+            let cell = tableView.dequeueReusableCell(withIdentifier: "BookCellView", for: indexPath) as? BookCellView else {
+                //load add cell
+                return tableView.dequeueReusableCell(withIdentifier: "AddCellView", for: indexPath)
+        }
+
+        let book = self.bookArray[indexPath.row]
+
+        cell.titleLabel.text = book.title
+        cell.authorLabel.text = book.author
+
+        // NOTE: we should have a default image for artwork
+        cell.artworkImageView.image = book.artwork
+
+        // Load stored percentage value
+        cell.completionLabel.text = book.percentCompletedRoundedString
+        cell.completionLabel.textColor = UIColor.flatGreenColorDark()
+
+        return cell
+    }
+
+    func numberOfSections(in tableView: UITableView) -> Int {
+        return 2
+    }
+}
+
+extension BaseListViewController: TableViewReorderDelegate {
+    func tableView(_ tableView: UITableView, reorderRowAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
+        guard destinationIndexPath.section == 0 else {
+            return
+        }
+
+        let book = self.bookArray[sourceIndexPath.row]
+        self.bookArray.remove(at: sourceIndexPath.row)
+        self.bookArray.insert(book, at: destinationIndexPath.row)
+    }
+
+    func tableView(_ tableView: UITableView, canReorderRowAt indexPath: IndexPath) -> Bool {
+        return indexPath.section == 0
+    }
+
+    func tableView(_ tableView: UITableView, targetIndexPathForReorderFromRowAt sourceIndexPath: IndexPath, to proposedDestinationIndexPath: IndexPath, snapshot: UIView?) -> IndexPath {
+
+        guard proposedDestinationIndexPath.section == 0 else {
+            return sourceIndexPath
+        }
+
+        if let snapshot = snapshot {
+            UIView.animate(withDuration: 0.2) {
+                snapshot.transform = CGAffineTransform.identity
+            }
+        }
+
+        return proposedDestinationIndexPath
+    }
+
+    func tableViewDidFinishReordering(_ tableView: UITableView, from initialSourceIndexPath: IndexPath, to finalDestinationIndexPath: IndexPath, dropped overIndexPath: IndexPath?) {
+
+        guard let overIndexPath = overIndexPath,
+            overIndexPath.section == 0 else {
+                return
+        }
+
+        let libraryObject = self.bookArray[overIndexPath.row]
+        let isPlaylist = libraryObject is Playlist
+        let title = isPlaylist
+            ? "Playlist"
+            : "Create a New Playlist"
+        let message = isPlaylist
+            ? "Add the book to \(libraryObject.title)"
+            : "Files in playlists are automatically played one after the other"
+
+        let hoverAlert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+
+        hoverAlert.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
+
+        if isPlaylist {
+            hoverAlert.addAction(UIAlertAction(title: "Add", style: .default, handler: { (_) in
+                let book1 = self.bookArray.remove(at: finalDestinationIndexPath.row)
+
+                if var playlist = libraryObject as? Playlist {
+                    playlist.books.append(book1)
+                    self.bookArray[overIndexPath.row] = playlist
+                }
+
+                self.tableView.beginUpdates()
+                self.tableView.deleteRows(at: [finalDestinationIndexPath], with: .fade)
+                self.tableView.endUpdates()
+            }))
+        } else {
+            hoverAlert.addTextField(configurationHandler: { (textfield) in
+                textfield.placeholder = "Name"
+            })
+
+            hoverAlert.addAction(UIAlertAction(title: "Create", style: .default, handler: { (_) in
+                let name = hoverAlert.textFields!.first!.text!
+
+                let minIndex = min(finalDestinationIndexPath.row, overIndexPath.row)
+                //removing based on minIndex works because the cells are always adjacent
+                let book1 = self.bookArray.remove(at: minIndex)
+                let book2 = self.bookArray.remove(at: minIndex)
+
+                let playlist = Playlist(percentCompletedRoundedString: "0%", title: name, author: "derp", artwork: UIImage(), books: [book1, book2])
+
+                self.bookArray.insert(playlist, at: minIndex)
+                self.tableView.beginUpdates()
+                self.tableView.deleteRows(at: [finalDestinationIndexPath, overIndexPath], with: .fade)
+                self.tableView.insertRows(at: [initialSourceIndexPath], with: .fade)
+                self.tableView.endUpdates()
+            }))
+        }
+
+        self.present(hoverAlert, animated: true, completion: nil)
+    }
+
+    func tableView(_ tableView: UITableView, sourceIndexPath: IndexPath, overIndexPath: IndexPath, snapshot: UIView) {
+        guard overIndexPath.section == 0 else {
+            return
+        }
+
+        UIView.animate(withDuration: 0.2) {
+            snapshot.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
+        }
+    }
+}
+
+extension BaseListViewController: UITableViewDelegate {
+    func tableView(_ tableView: UITableView, canFocusRowAt indexPath: IndexPath) -> Bool {
+        return true
+    }
+
+    func tableView(_ tableView: UITableView, editActionsForRowAt indexPath: IndexPath) -> [UITableViewRowAction]? {
+        guard indexPath.section == 0 else {
+            return nil
+        }
+
+        let deleteAction = UITableViewRowAction(style: .default, title: "Delete") { (_, indexPath) in
+
+            let cancelAction = UIAlertAction(title: "No", style: .cancel, handler: { _ in
+                tableView.setEditing(false, animated: true)
+            })
+            let okAction = UIAlertAction(title: "Yes", style: .destructive, handler: { _ in
+                let book = (self.bookArray[indexPath.row] as? Book)!
+
+                do {
+                    try FileManager.default.removeItem(at: book.fileURL)
+
+                    self.bookArray.remove(at: indexPath.row)
+                    tableView.beginUpdates()
+                    tableView.deleteRows(at: [indexPath], with: .none)
+                    tableView.endUpdates()
+                } catch {
+                    self.showAlert("Error", message: "There was an error deleting the book, please try again.", style: .alert)
+                }
+            })
+
+            self.showAlert("Confirmation", message: "Are you sure you would like to remove this audiobook?", actions: [cancelAction, okAction], style: .alert)
+        }
+
+        deleteAction.backgroundColor = UIColor.red
+
+        return [deleteAction]
+    }
+
+    func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCellEditingStyle, forRowAt indexPath: IndexPath) {
+    }
+
+    func tableView(_ tableView: UITableView, editingStyleForRowAt indexPath: IndexPath) -> UITableViewCellEditingStyle {
+        guard indexPath.section == 0 else {
+            return .insert
+        }
+        return .delete
+    }
+
+    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        return 86
+    }
+
+    func tableView(_ tableView: UITableView, willSelectRowAt indexPath: IndexPath) -> IndexPath? {
+        guard let index = tableView.indexPathForSelectedRow else {
+            return indexPath
+        }
+
+        tableView.deselectRow(at: index, animated: true)
+
+        return indexPath
+    }
+}

@@ -1,3 +1,4 @@
 github "ViccAlexander/Chameleon" "2.2.0"
-github "cbpowell/MarqueeLabel" "3.1.4"
 github "jdg/MBProgressHUD" "0.9.2"
+github "cbpowell/MarqueeLabel" "3.1.4"
+github "GianniCarlo/SwiftReorder" "5.1.1"
