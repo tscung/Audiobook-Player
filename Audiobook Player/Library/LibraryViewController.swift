@@ -138,7 +138,6 @@ extension LibraryViewController {
             if let playlist = libraryObject as? Playlist,
                 let playlistVC = storyboard.instantiateViewController(withIdentifier: "PlaylistViewController") as? PlaylistViewController {
                 playlistVC.currentPlaylist = playlist
-                playlistVC.bookArray = playlist.books
 
                 self.navigationController?.pushViewController(playlistVC, animated: true)
             }

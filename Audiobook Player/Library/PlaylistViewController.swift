@@ -17,6 +17,19 @@ class PlaylistViewController: BaseListViewController {
         super.viewDidLoad()
 
         self.navigationItem.title = self.currentPlaylist.title
+        
+        self.bookArray = self.currentPlaylist.books
+    }
+
+    override func tableView(_ tableView: UITableView, reorderRowAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
+        guard destinationIndexPath.section == 0 else {
+            return
+        }
+
+        let book = self.bookArray[sourceIndexPath.row]
+        self.bookArray.remove(at: sourceIndexPath.row)
+        self.bookArray.insert(book, at: destinationIndexPath.row)
+        self.currentPlaylist.books = self.bookArray
     }
 
     override func tableView(_ tableView: UITableView, targetIndexPathForReorderFromRowAt sourceIndexPath: IndexPath, to proposedDestinationIndexPath: IndexPath, snapshot: UIView?) -> IndexPath {
@@ -37,7 +50,7 @@ class PlaylistViewController: BaseListViewController {
 }
 
 extension PlaylistViewController {
-    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {        
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         guard let book = self.bookArray[indexPath.row] as? Book else {
             return
         }
