@@ -84,7 +84,7 @@ class LibraryViewController: BaseListViewController, UIGestureRecognizerDelegate
     @objc func showSettings() {
         self.performSegue(withIdentifier: "showSettingsSegue", sender: nil)
     }
-    
+
     override func bookReady() {
         super.bookReady()
         PlayerManager.sharedInstance.playPause()
@@ -152,7 +152,8 @@ extension LibraryViewController {
     override func tableViewDidFinishReordering(_ tableView: UITableView, from initialSourceIndexPath: IndexPath, to finalDestinationIndexPath: IndexPath, dropped overIndexPath: IndexPath?) {
 
         guard let overIndexPath = overIndexPath,
-            overIndexPath.section == 0 else {
+            overIndexPath.section == 0,
+            let book = self.bookArray[finalDestinationIndexPath.row] as? Book else {
                 return
         }
 
@@ -171,13 +172,12 @@ extension LibraryViewController {
 
         if isPlaylist {
             hoverAlert.addAction(UIAlertAction(title: "Add", style: .default, handler: { (_) in
-                let book1 = self.bookArray.remove(at: finalDestinationIndexPath.row)
 
                 if var playlist = libraryObject as? Playlist {
-                    playlist.books.append(book1)
+                    playlist.books.append(book)
                     self.bookArray[overIndexPath.row] = playlist
                 }
-
+                self.bookArray.remove(at: finalDestinationIndexPath.row)
                 self.tableView.beginUpdates()
                 self.tableView.deleteRows(at: [finalDestinationIndexPath], with: .fade)
                 self.tableView.endUpdates()
@@ -199,8 +199,8 @@ extension LibraryViewController {
 
                 self.bookArray.insert(playlist, at: minIndex)
                 self.tableView.beginUpdates()
-                self.tableView.deleteRows(at: [finalDestinationIndexPath, overIndexPath], with: .fade)
-                self.tableView.insertRows(at: [initialSourceIndexPath], with: .fade)
+                self.tableView.deleteRows(at: [IndexPath(row: minIndex, section: 0), IndexPath(row: minIndex + 1, section: 0)], with: .fade)
+                self.tableView.insertRows(at: [IndexPath(row: minIndex, section: 0)], with: .fade)
                 self.tableView.endUpdates()
             }))
         }

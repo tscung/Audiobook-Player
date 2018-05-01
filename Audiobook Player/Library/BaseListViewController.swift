@@ -225,8 +225,6 @@ extension BaseListViewController: UITableViewDataSource {
         return proposedDestinationIndexPath
     }
 
-    func tableViewDidFinishReordering(_ tableView: UITableView, from initialSourceIndexPath: IndexPath, to finalDestinationIndexPath: IndexPath, dropped overIndexPath: IndexPath?) {}
-
     func tableView(_ tableView: UITableView, sourceIndexPath: IndexPath, overIndexPath: IndexPath, snapshot: UIView) {
         guard overIndexPath.section == 0 else {
             return
@@ -236,6 +234,8 @@ extension BaseListViewController: UITableViewDataSource {
             snapshot.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
         }
     }
+
+    func tableViewDidFinishReordering(_ tableView: UITableView, from initialSourceIndexPath: IndexPath, to finalDestinationIndexPath: IndexPath, dropped overIndexPath: IndexPath?) {}
 }
 
 extension BaseListViewController: UITableViewDelegate {
