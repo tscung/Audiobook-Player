@@ -8,6 +8,7 @@
 
 import UIKit
 import SwiftReorder
+import MBProgressHUD
 
 class BaseListViewController: UIViewController {
     // TableView's datasource
@@ -32,6 +33,9 @@ class BaseListViewController: UIViewController {
 
         // register for percentage change notifications
         NotificationCenter.default.addObserver(self, selector: #selector(self.updatePercentage(_:)), name: Notification.Name.AudiobookPlayer.updatePercentage, object: nil)
+
+        // register notifications when the book is ready
+        NotificationCenter.default.addObserver(self, selector: #selector(self.bookReady), name: Notification.Name.AudiobookPlayer.bookReady, object: nil)
 
         // register notifications when the book is played
         NotificationCenter.default.addObserver(self, selector: #selector(self.bookPlayed), name: Notification.Name.AudiobookPlayer.bookPlayed, object: nil)
@@ -87,13 +91,21 @@ extension BaseListViewController {
                 return
         }
 
-        guard let index = (self.bookArray.index { (book) -> Bool in
-            return (book as? Book)!.fileURL == fileURL
+        guard let index = (self.bookArray.index { (libraryObject) -> Bool in
+            if let book = libraryObject as? Book {
+                return book.fileURL == fileURL
+            }
+
+            return false
         }), let cell = self.tableView.cellForRow(at: IndexPath(row: index, section: 0)) as? BookCellView else {
             return
         }
 
         cell.completionLabel.text = percentCompletedString
+    }
+
+    @objc func bookReady() {
+        MBProgressHUD.hideAllHUDs(for: self.view, animated: true)
     }
 
     @objc func bookPlayed() {
@@ -108,8 +120,39 @@ extension BaseListViewController {
         //        self.footerPlayButton.setImage(self.miniPlayImage, for: UIControlState())
     }
 
+    func play(_ book: Book) {
+        self.setupPlayer(book: book)
+        self.setupFooter(book: book)
+    }
+
     func setupFooter(book: Book) {
         //setup relevant information
+    }
+
+    func setupPlayer(book: Book) {
+        // Make sure player is for a different book
+        guard PlayerManager.sharedInstance.fileURL != book.fileURL else {
+            self.showPlayerView(book: book)
+            return
+        }
+
+        MBProgressHUD.showAdded(to: self.view, animated: true)
+
+        // Replace player with new one
+        PlayerManager.sharedInstance.load(book) { (_) in
+            self.showPlayerView(book: book)
+        }
+    }
+
+    func showPlayerView(book: Book) {
+        let storyboard = UIStoryboard(name: "Main", bundle: nil)
+
+        guard let playerVC = storyboard.instantiateViewController(withIdentifier: "PlayerViewController") as? PlayerViewController else {
+            return
+        }
+
+        playerVC.currentBook = book
+        self.present(playerVC, animated: true)
     }
 }
 
@@ -152,7 +195,7 @@ extension BaseListViewController: UITableViewDataSource {
     }
 }
 
-extension BaseListViewController: TableViewReorderDelegate {
+@objc extension BaseListViewController: TableViewReorderDelegate {
     func tableView(_ tableView: UITableView, reorderRowAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
         guard destinationIndexPath.section == 0 else {
             return
@@ -182,64 +225,7 @@ extension BaseListViewController: TableViewReorderDelegate {
         return proposedDestinationIndexPath
     }
 
-    func tableViewDidFinishReordering(_ tableView: UITableView, from initialSourceIndexPath: IndexPath, to finalDestinationIndexPath: IndexPath, dropped overIndexPath: IndexPath?) {
-
-        guard let overIndexPath = overIndexPath,
-            overIndexPath.section == 0 else {
-                return
-        }
-
-        let libraryObject = self.bookArray[overIndexPath.row]
-        let isPlaylist = libraryObject is Playlist
-        let title = isPlaylist
-            ? "Playlist"
-            : "Create a New Playlist"
-        let message = isPlaylist
-            ? "Add the book to \(libraryObject.title)"
-            : "Files in playlists are automatically played one after the other"
-
-        let hoverAlert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-
-        hoverAlert.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
-
-        if isPlaylist {
-            hoverAlert.addAction(UIAlertAction(title: "Add", style: .default, handler: { (_) in
-                let book1 = self.bookArray.remove(at: finalDestinationIndexPath.row)
-
-                if var playlist = libraryObject as? Playlist {
-                    playlist.books.append(book1)
-                    self.bookArray[overIndexPath.row] = playlist
-                }
-
-                self.tableView.beginUpdates()
-                self.tableView.deleteRows(at: [finalDestinationIndexPath], with: .fade)
-                self.tableView.endUpdates()
-            }))
-        } else {
-            hoverAlert.addTextField(configurationHandler: { (textfield) in
-                textfield.placeholder = "Name"
-            })
-
-            hoverAlert.addAction(UIAlertAction(title: "Create", style: .default, handler: { (_) in
-                let name = hoverAlert.textFields!.first!.text!
-
-                let minIndex = min(finalDestinationIndexPath.row, overIndexPath.row)
-                //removing based on minIndex works because the cells are always adjacent
-                let book1 = self.bookArray.remove(at: minIndex)
-                let book2 = self.bookArray.remove(at: minIndex)
-
-                let playlist = Playlist(percentCompletedRoundedString: "0%", title: name, author: "derp", artwork: UIImage(), books: [book1, book2])
-
-                self.bookArray.insert(playlist, at: minIndex)
-                self.tableView.beginUpdates()
-                self.tableView.deleteRows(at: [finalDestinationIndexPath, overIndexPath], with: .fade)
-                self.tableView.insertRows(at: [initialSourceIndexPath], with: .fade)
-                self.tableView.endUpdates()
-            }))
-        }
-
-        self.present(hoverAlert, animated: true, completion: nil)
-    }
+    func tableViewDidFinishReordering(_ tableView: UITableView, from initialSourceIndexPath: IndexPath, to finalDestinationIndexPath: IndexPath, dropped overIndexPath: IndexPath?) {}
 
     func tableView(_ tableView: UITableView, sourceIndexPath: IndexPath, overIndexPath: IndexPath, snapshot: UIView) {
         guard overIndexPath.section == 0 else {

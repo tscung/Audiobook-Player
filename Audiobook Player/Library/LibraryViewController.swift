@@ -29,6 +29,9 @@ class LibraryViewController: BaseListViewController, UIGestureRecognizerDelegate
         self.footerView.backgroundColor = UIColor.flatSkyBlue()
         self.footerHeightConstraint.constant = 0
 
+        let settingsButton = UIBarButtonItem(title: "Settings", style: .plain, target: self, action: #selector(self.showSettings))
+        self.navigationItem.leftBarButtonItem = settingsButton
+
         // set tap handler to show detail on tap on footer view
         let tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(self.didPressShowDetail(_:)))
 
@@ -36,9 +39,6 @@ class LibraryViewController: BaseListViewController, UIGestureRecognizerDelegate
 
         // register for appDelegate openUrl notifications
         NotificationCenter.default.addObserver(self, selector: #selector(self.loadFiles), name: Notification.Name.AudiobookPlayer.openURL, object: nil)
-
-        // register notifications when the book is ready
-        NotificationCenter.default.addObserver(self, selector: #selector(self.bookReady), name: Notification.Name.AudiobookPlayer.bookReady, object: nil)
 
         self.loadFiles()
     }
@@ -73,18 +73,6 @@ class LibraryViewController: BaseListViewController, UIGestureRecognizerDelegate
         return navigationController!.viewControllers.count > 1
     }
 
-    @IBAction func didPressPlay(_ sender: UIButton) {
-        PlayerManager.sharedInstance.play()
-    }
-
-    @objc func forwardPressed(_ sender: UIButton) {
-        PlayerManager.sharedInstance.forward()
-    }
-
-    @objc func rewindPressed(_ sender: UIButton) {
-        PlayerManager.sharedInstance.rewind()
-    }
-
     @IBAction func didPressShowDetail(_ sender: UIButton) {
         self.showPlayerView(book: PlayerManager.sharedInstance.currentBook)
     }
@@ -93,40 +81,13 @@ class LibraryViewController: BaseListViewController, UIGestureRecognizerDelegate
         self.tableView.setEditing(!self.tableView.isEditing, animated: true)
     }
 
-    @objc func bookReady() {
-        MBProgressHUD.hideAllHUDs(for: self.view, animated: true)
+    @objc func showSettings() {
+        self.performSegue(withIdentifier: "showSettingsSegue", sender: nil)
+    }
+    
+    override func bookReady() {
+        super.bookReady()
         PlayerManager.sharedInstance.playPause()
-    }
-
-    func play(_ book: Book) {
-        setupPlayer(book: book)
-        self.setupFooter(book: book)
-    }
-
-    func setupPlayer(book: Book) {
-        // Make sure player is for a different book
-        guard PlayerManager.sharedInstance.fileURL != book.fileURL else {
-            showPlayerView(book: book)
-            return
-        }
-
-        MBProgressHUD.showAdded(to: self.view, animated: true)
-
-        // Replace player with new one
-        PlayerManager.sharedInstance.load(book) { (_) in
-            self.showPlayerView(book: book)
-        }
-    }
-
-    func showPlayerView(book: Book) {
-        let storyboard = UIStoryboard(name: "Main", bundle: nil)
-
-        guard let playerVC = storyboard.instantiateViewController(withIdentifier: "PlayerViewController") as? PlayerViewController else {
-            return
-        }
-
-        playerVC.currentBook = book
-        self.present(playerVC, animated: true)
     }
 }
 
@@ -177,6 +138,7 @@ extension LibraryViewController {
             if let playlist = libraryObject as? Playlist,
                 let playlistVC = storyboard.instantiateViewController(withIdentifier: "PlaylistViewController") as? PlaylistViewController {
                 playlistVC.currentPlaylist = playlist
+                playlistVC.bookArray = playlist.books
 
                 self.navigationController?.pushViewController(playlistVC, animated: true)
             }
@@ -184,7 +146,66 @@ extension LibraryViewController {
             return
         }
 
-        play(book)
+        self.play(book)
+    }
+
+    override func tableViewDidFinishReordering(_ tableView: UITableView, from initialSourceIndexPath: IndexPath, to finalDestinationIndexPath: IndexPath, dropped overIndexPath: IndexPath?) {
+
+        guard let overIndexPath = overIndexPath,
+            overIndexPath.section == 0 else {
+                return
+        }
+
+        let libraryObject = self.bookArray[overIndexPath.row]
+        let isPlaylist = libraryObject is Playlist
+        let title = isPlaylist
+            ? "Playlist"
+            : "Create a New Playlist"
+        let message = isPlaylist
+            ? "Add the book to \(libraryObject.title)"
+            : "Files in playlists are automatically played one after the other"
+
+        let hoverAlert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+
+        hoverAlert.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
+
+        if isPlaylist {
+            hoverAlert.addAction(UIAlertAction(title: "Add", style: .default, handler: { (_) in
+                let book1 = self.bookArray.remove(at: finalDestinationIndexPath.row)
+
+                if var playlist = libraryObject as? Playlist {
+                    playlist.books.append(book1)
+                    self.bookArray[overIndexPath.row] = playlist
+                }
+
+                self.tableView.beginUpdates()
+                self.tableView.deleteRows(at: [finalDestinationIndexPath], with: .fade)
+                self.tableView.endUpdates()
+            }))
+        } else {
+            hoverAlert.addTextField(configurationHandler: { (textfield) in
+                textfield.placeholder = "Name"
+            })
+
+            hoverAlert.addAction(UIAlertAction(title: "Create", style: .default, handler: { (_) in
+                let name = hoverAlert.textFields!.first!.text!
+
+                let minIndex = min(finalDestinationIndexPath.row, overIndexPath.row)
+                //removing based on minIndex works because the cells are always adjacent
+                let book1 = self.bookArray.remove(at: minIndex)
+                let book2 = self.bookArray.remove(at: minIndex)
+
+                let playlist = Playlist(percentCompletedRoundedString: "0%", title: name, author: "derp", artwork: UIImage(), books: [book1, book2])
+
+                self.bookArray.insert(playlist, at: minIndex)
+                self.tableView.beginUpdates()
+                self.tableView.deleteRows(at: [finalDestinationIndexPath, overIndexPath], with: .fade)
+                self.tableView.insertRows(at: [initialSourceIndexPath], with: .fade)
+                self.tableView.endUpdates()
+            }))
+        }
+
+        self.present(hoverAlert, animated: true, completion: nil)
     }
 }
 
